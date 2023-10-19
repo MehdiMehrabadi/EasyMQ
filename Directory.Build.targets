@@ -1,0 +1,17 @@
+<Project>
+
+	<ItemGroup>
+	
+		<PackageReference Update="RabbitMQ.Client" Version="6.5.0" />
+		<PackageReference Update="Mapster" Version="7.3.0" />
+		<PackageReference Update="NLog" Version="5.2.2" />
+		<PackageReference Update="NLog.Web.AspNetCore" Version="5..2.2" />
+		<PackageReference Update="Microsoft.Extensions.Hosting" Version="7.0.1" />
+		<PackageReference Update="Microsoft.Extensions.Logging.Abstractions" Version="7.0.1" />
+		<PackageReference Update="Microsoft.Extensions.Configuration.Abstractions" Version="7.0.0" />
+		<PackageReference Update="Microsoft.Extensions.Options.ConfigurationExtensions" Version="7.0.0" />
+		<PackageReference Update="StackExchange.Redis" Version="2.6.122" />
+		<PackageReference Update="Microsoft.Extensions.Caching.Memory" Version="7.0.0" />
+	</ItemGroup>
+	
+</Project>
