@@ -6,9 +6,6 @@ This project is based on RabbitMQ and helps developers who want to avoid getting
 |**net6.0**|:white_check_mark:|
 |**net5.0**|:white_check_mark:|
 |**netcoreapp3.1**|:white_check_mark:|
-|**netstandard2.1**|:white_check_mark:|
-|**netstandard2.0**|:white_check_mark:|
-
 
 
 ## How to add in DI
