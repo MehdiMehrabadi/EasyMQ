@@ -7,8 +7,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="EasyMQ" Version="1.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" />
+		<PackageReference Include="EasyMQ" Version="1.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="7.0.1"/>
 
 	</ItemGroup>
 	<ItemGroup>

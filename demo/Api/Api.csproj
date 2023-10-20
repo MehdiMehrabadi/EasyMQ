@@ -6,12 +6,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Consumer\Consumer.csproj" />
-  </ItemGroup>
+  
 	<ItemGroup>
-		<PackageReference Include="EasyMQ" Version="1.0.0" />
-		<PackageReference Include="Mapster" />
+		<PackageReference Include="EasyMQ" Version="1.0.1" />
+		<PackageReference Include="Mapster" Version="7.3.0" />
+	</ItemGroup>
+
+  
+	<ItemGroup>
+	  <ProjectReference Include="..\Common\Common.csproj" />
 	</ItemGroup>
 	<ItemGroup>
 	  <Content Update="appsettings.Development.json">

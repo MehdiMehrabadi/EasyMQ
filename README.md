@@ -35,8 +35,9 @@ As evident, you can specify the prefetch count for each queue, and set even defi
 Even if you have an issue with the 10-second interval, you can change this time.
 However, please note that if you change the time, you need to delete the queue from RabbitMQ and run the program again to recreate the queue. 
 If you want count of errors to be retried infinitely, you can use the number -1.
-you can use the following code to publish the message in the queue:
+You can use the following code to publish the message in the queue:
 
+## Publisher
 ```csharp
 
       [HttpPost("send")]
@@ -47,7 +48,38 @@ you can use the following code to publish the message in the queue:
       }
 
 ```
+And you can use the following code to consumer the message in the queue:
+## Consumer
+```csharp
+public class MessageReceiver : IReceiver<MessageModel>
+{
+    public async Task ReceiveAsync(MessageModel message, CancellationToken cancellationToken)
+    {
+        try
+        {
+            //throw new Exception();// If you want to test retry count, uncomment this code!
+            Console.WriteLine($"received: {message.Receiver} ,text: {message.Text}");
+            await Task.Yield();
+        }
+        catch (Exception)
+        {
+            throw new Exception();
+        }
+    }
 
+    /// <summary>
+    /// this method is running after finishing retry error count.
+    /// </summary>
+    /// <param name="message"></param>
+    /// <returns></returns>
+    public async Task HandleErrorAsync(MessageModel message)
+    {
+        // Implementing your own scenarios. for example: save to db for check later, save to file or ....
+        Console.WriteLine($"message: {message.Receiver} ,text: {message.Text} , saved to db");
+        await Task.Yield();
+    }
+}
+```
 ### Custom configuration for publisher and consumer
 Rabbit option in appsettings.json
 ```csharp
