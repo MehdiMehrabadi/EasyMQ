@@ -48,7 +48,7 @@ You can use the following code to publish the message in the queue:
       }
 
 ```
-And you can use the following code to consumer the message in the queue:
+And you can use the following code to consume message in the queue:
 ## Consumer
 ```csharp
 public class MessageReceiver : IReceiver<MessageModel>
