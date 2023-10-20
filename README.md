@@ -2,7 +2,7 @@
 [![NuGet](https://img.shields.io/nuget/v/EasyMQ.svg)](https://www.nuget.org/packages/EasyMQ/)
 [![NuGet](https://img.shields.io/nuget/dt/EasyMQ.svg)](https://www.nuget.org/packages/EasyMQ/)
 
-##EasyMQ
+## EasyMQ
 This project is based on RabbitMQ and helps developers who want to avoid getting involved in the complexities of working with RabbitMQ. While working with this project and its expansion is easy, you utilize a maximum of RabbitMQ options in this project.
 
 |TargetFramework|Support|
