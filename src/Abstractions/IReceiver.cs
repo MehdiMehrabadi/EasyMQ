@@ -15,9 +15,9 @@ public interface IReceiver<T> where T : class
 
     /// <summary>
     /// In case of message still get an exception after retry count, 
-    /// you can handle the error by your logic
+    /// You can handle the error by your logic
     /// </summary>
-    /// <param name="message">message object</param>
+    /// <param name="message">Message object</param>
     /// <returns></returns>
     Task HandleErrorAsync(T message);
 }
