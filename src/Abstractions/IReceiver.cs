@@ -18,6 +18,7 @@ public interface IReceiver<T> where T : class
     /// You can handle the error by your logic
     /// </summary>
     /// <param name="message">Message object</param>
+    /// <param name="cancellationToken">Task CancellationToken</param>
     /// <returns></returns>
-    Task HandleErrorAsync(T message);
+    Task HandleErrorAsync(T message, CancellationToken cancellationToken = default);
 }
