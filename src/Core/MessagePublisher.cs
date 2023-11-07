@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using EasyMQ.Abstractions;
 using RabbitMQ.Client;
@@ -56,7 +57,7 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
             Channel.QueueDeclare(queue.Name, durable: true, exclusive: false, autoDelete: false, args);
             Channel.QueueBind(queue.Name, messageManagerSettings.ExchangeName, queue.Name);
 
-          
+
             var errorArgs = new Dictionary<string, object>
             {
                 [MaxPriorityHeader] = 10,
@@ -72,15 +73,19 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
         this._queueSettings = queueSettings;
     }
 
-    public Task PublishAsync<T>(T message, int priority = 1, TimeSpan? keepAliveTime = null) where T : class
+    public Task PublishAsync<T>(T message, int priority = 1, TimeSpan? keepAliveTime = null, CancellationToken cancellationToken = default) where T : class
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var sendBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize<object>(message, _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default));
         var routingKey = _queueSettings.Queues.First(q => q.Type == typeof(T)).Name;
+
         var properties = Channel.CreateBasicProperties();
         properties.Persistent = true;
         properties.Priority = Convert.ToByte(priority);
         properties.Expiration = keepAliveTime?.TotalMilliseconds.ToString(CultureInfo.InvariantCulture);
         properties.MessageId = Guid.NewGuid().ToString("N");
+
+        cancellationToken.ThrowIfCancellationRequested();
         Channel.BasicPublish(_messageManagerSettings.ExchangeName, routingKey, properties, sendBytes.AsMemory());
         return Task.CompletedTask;
     }
