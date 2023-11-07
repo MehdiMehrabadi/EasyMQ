@@ -68,7 +68,7 @@ internal class Listener<T> : BackgroundService where T : class
                     {
                         try
                         {
-                            await receiver.HandleErrorAsync(response);
+                            await receiver.HandleErrorAsync(response, stoppingToken);
                             await _errorCounter.KillCounterAsync(message.BasicProperties.MessageId);
                             _messagePublisher.AckMessage(message);
                         }
@@ -76,7 +76,6 @@ internal class Listener<T> : BackgroundService where T : class
                         {
                             _messagePublisher.NackMessage(message);
                         }
-
                     }
                 }
             }
