@@ -48,7 +48,7 @@ You can use the following code to publish the message in the queue:
       [HttpPost("send")]
       public async Task<IActionResult> SendMessageAsync([FromBody] MessageRequest request)
       {
-          await messagePublisher.PublishAsync(request.Adapt<MessageModel>(), priority: 1, keepAliveTime: TimeSpan.FromMinutes(10));
+          await messagePublisher.PublishAsync(request.Adapt<MessageModel>(), priority: 1, keepAliveTime: TimeSpan.FromMinutes(10), HttpContext.RequestAborted);
           return Ok();
       }
 
@@ -76,8 +76,9 @@ public class MessageReceiver : IReceiver<MessageModel>
     /// this method is running after finishing retry error count.
     /// </summary>
     /// <param name="message"></param>
+    /// <param name="cancellationToken">Task CancellationToken</param>
     /// <returns></returns>
-    public async Task HandleErrorAsync(MessageModel message)
+    public async Task HandleErrorAsync(MessageModel message, CancellationToken cancellationToken)
     {
         // Implementing your own scenarios. for example: save to db for check later, save to file or ....
         Console.WriteLine($"message: {message.Receiver} ,text: {message.Text} , saved to db");
