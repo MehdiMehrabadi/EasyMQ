@@ -7,6 +7,7 @@ This project is based on RabbitMQ and helps developers who want to avoid getting
 
 |TargetFramework|Support|
 |---|---|
+|**net8.0**|:white_check_mark:|
 |**net7.0**|:white_check_mark:|
 |**net6.0**|:white_check_mark:|
 |**net5.0**|:white_check_mark:|
