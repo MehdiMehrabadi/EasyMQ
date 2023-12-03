@@ -18,15 +18,14 @@ internal class Listener<T> : BackgroundService where T : class
     private readonly string _queueName;
     private readonly int _prefetchCount;
     private readonly int _retryCount;
-    private readonly IErrorCounter _errorCounter;
+
 
     public Listener(MessagePublisher messagePublisher, MessageManagerSettings messageManagerSettings,
-        QueueSettings settings, IServiceScopeFactory serviceScopeFactory, IErrorCounter errorCounter)
+        QueueSettings settings, IServiceScopeFactory serviceScopeFactory)
     {
         this._messagePublisher = messagePublisher;
         this._messageManagerSettings = messageManagerSettings;
         this._serviceScopeFactory = serviceScopeFactory;
-        _errorCounter = errorCounter;
         var queue = settings.Queues.First(q => q.Type == typeof(T));
         _queueName = queue.Name;
         _prefetchCount = queue.prefetchCount;
@@ -42,6 +41,7 @@ internal class Listener<T> : BackgroundService where T : class
         {
             using var scope = _serviceScopeFactory.CreateScope();
             var receiver = scope.ServiceProvider.GetRequiredService<IReceiver<T>>();
+            var errorCounter = scope.ServiceProvider.GetRequiredService<IErrorCounter>();
             var response = JsonSerializer.Deserialize<T>(message.Body.Span, _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default);
             try
             {
@@ -57,11 +57,11 @@ internal class Listener<T> : BackgroundService where T : class
                 }
                 else
                 {
-                    var tryCount = await _errorCounter.GetTryCountAsync(message.BasicProperties.MessageId);
+                    var tryCount = await errorCounter.GetTryCountAsync(message.BasicProperties.MessageId);
                     if (tryCount < _retryCount)
                     {
                         tryCount++;
-                        await _errorCounter.UpdateTryCountAsync(message.BasicProperties.MessageId, tryCount);
+                        await errorCounter.UpdateTryCountAsync(message.BasicProperties.MessageId, tryCount);
                         _messagePublisher.NackMessage(message);
                     }
                     else
@@ -69,7 +69,7 @@ internal class Listener<T> : BackgroundService where T : class
                         try
                         {
                             await receiver.HandleErrorAsync(response, stoppingToken);
-                            await _errorCounter.KillCounterAsync(message.BasicProperties.MessageId);
+                            await errorCounter.KillCounterAsync(message.BasicProperties.MessageId);
                             _messagePublisher.AckMessage(message);
                         }
                         catch (Exception)

@@ -26,7 +26,7 @@ public class MessageReceiver : IReceiver<MessageModel>
     /// </summary>
     /// <param name="message"></param>
     /// <returns></returns>
-    public async Task HandleErrorAsync(MessageModel message)
+    public async Task HandleErrorAsync(MessageModel message,CancellationToken cancellationToken)
     {
         try
         {

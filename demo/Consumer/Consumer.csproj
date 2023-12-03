@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -7,8 +7,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="EasyMQ" Version="1.0.1" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1"/>
+		<PackageReference Include="EasyMQ" Version="1.0.4" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
 
 	</ItemGroup>
 	<ItemGroup>
