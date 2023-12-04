@@ -15,7 +15,28 @@ This project is based on RabbitMQ and helps developers who want to avoid getting
 
 
 ## How to add in DI
-You can add EasyMQ in Startup like this:
+You can add EasyMQ in Publisher Startup like this:
+```csharp
+    builder.Services.AddRabbitMq(settings =>
+   {
+    var configuration = builder.Configuration.GetSection("Rabbit");
+    int.TryParse(configuration["Port"], out var port);
+    settings.Host = configuration["Host"];
+    settings.Port = port;
+    settings.ExchangeName = configuration["ApplicationName"];
+    settings.VirtualHost = configuration["VirtualHost"];
+    settings.UserName = configuration["Username"];
+    settings.Password = configuration["Password"];
+  
+   }, queues =>
+   {
+    queues.Add<MessageModel>(queueName: "message");
+   // queues.Add<MessageModel2>(queueName: "message2");
+
+   });
+```
+
+And you can  add this to Consumer Startup like this:
 ```csharp
     services.AddRabbitMq(settings =>
         {
@@ -27,16 +48,20 @@ You can add EasyMQ in Startup like this:
             settings.VirtualHost = config["VirtualHost"];
             settings.UserName = config["Username"];
             settings.Password = config["Password"];
+
         }, queues =>
         {
+            // add queues 
             queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 3);
-            queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3, retryCount: -1);
+            // queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3, retryCount: -1);
         })
         // add receivers
-        .AddReceiver<MessageModel, MessageReceiver>()
-        .AddReceiver<MessageModel2, MessageReceiver2>();
+        .AddReceiver<MessageModel, MessageReceiver>();
+       //.AddReceiver<MessageModel2, MessageReceiver2>();
+	
+	// for set retry count message to redis or in memory 
+    services.AddCacheService(configuration);
 ```
-
 As evident, you can specify the prefetch count for each queue, and set even define the retry count in case of an error. The mechanism of this project is that in case of an error in any part of the message, it adds it to the error queue of the same queue and returns it to the main queue after 10 seconds, and this count is configurable by yourself.
 Even if you have an issue with the 10-second interval, you can change this time.
 However, please note that if you change the time, you need to delete the queue from RabbitMQ and run the program again to recreate the queue. 
