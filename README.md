@@ -14,6 +14,13 @@ This project is based on RabbitMQ and helps developers who want to avoid getting
 |**net5.0**|:white_check_mark:|
 |**netcoreapp3.1**|:white_check_mark:|
 
+## Features
+
+- **Easy RabbitMQ Integration**: Simple configuration and setup
+- **Retry Mechanism**: Configurable retry count with automatic error handling
+- **TTL Support**: Time-based expiration for retry count data (Redis/Memory)
+- **Flexible Storage**: Choose between Redis or In-Memory for retry tracking
+- **Multiple .NET Versions**: Support for .NET 5.0 through .NET 9.0
 
 ## How to add in DI
 You can add EasyMQ in Publisher Startup like this:
@@ -52,10 +59,10 @@ And you can  add this to Consumer Startup like this:
 
         }, queues =>
         {
-            // add queues 
-            queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 3);
-            // queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3, retryCount: -1);
-        })
+            // add queues with TTL for retry count persistence
+            queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 3, ttl: TimeSpan.FromHours(2));
+            // queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3, retryCount: -1, ttl: TimeSpan.FromMinutes(30));
+        }, defaultTtl: TimeSpan.FromHours(1)) // Default TTL for all queues if not specified
         // add receivers
         .AddReceiver<MessageModel, MessageReceiver>();
        //.AddReceiver<MessageModel2, MessageReceiver2>();
@@ -63,6 +70,31 @@ And you can  add this to Consumer Startup like this:
 	// for set retry count message to redis or in memory 
     services.AddCacheService(configuration);
 ```
+
+### TTL Feature for Retry Count Persistence
+
+The TTL (Time To Live) feature allows you to configure how long retry count data persists in Redis or Memory. This ensures that retry count information doesn't accumulate indefinitely and automatically expires after the configured time period.
+
+**Key Benefits:**
+- **Automatic Cleanup**: Retry count data automatically expires, preventing memory/Redis accumulation
+- **Flexible Configuration**: Different TTL values can be set for different queues or use a global default
+- **Resource Efficiency**: Prevents memory or Redis from filling up with obsolete retry data
+
+**Usage Examples:**
+
+```csharp
+// Global default TTL for all queues
+services.AddRabbitMq(settings => { /* config */ }, queues => { /* queues */ }, 
+    defaultTtl: TimeSpan.FromHours(1));
+
+// Per-queue TTL configuration
+queues.Add<MessageModel>("high-priority", retryCount: 5, ttl: TimeSpan.FromHours(2));
+queues.Add<MessageModel>("low-priority", retryCount: 2, ttl: TimeSpan.FromMinutes(30));
+
+// No TTL (indefinite persistence)
+queues.Add<MessageModel>("message", retryCount: 3); // Uses default TTL if specified
+```
+
 As evident, you can specify the prefetch count for each queue, and set even define the retry count in case of an error. The mechanism of this project is that in case of an error in any part of the message, it adds it to the error queue of the same queue and returns it to the main queue after 10 seconds, and this count is configurable by yourself.
 Even if you have an issue with the 10-second interval, you can change this time.
 However, please note that if you change the time, you need to delete the queue from RabbitMQ and run the program again to recreate the queue. 
@@ -136,6 +168,11 @@ CacheOption in appsettings.json
     "RedisPassword": ""
   }
 ```
+
+## Documentation
+
+For detailed information about the TTL feature and advanced usage examples, see [TTL_FEATURE_README.md](TTL_FEATURE_README.md).
+
 In this project, an attempt has been made to make working with RabbitMQ more convenient. Now, if you have any suggestions, you are welcome to contribute in the project.
 
 
