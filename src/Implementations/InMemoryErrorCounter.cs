@@ -20,9 +20,20 @@ namespace EasyMQ.Implementations
 
         }
 
-        public Task UpdateTryCountAsync(string messageId, int tryCount)
+        public Task UpdateTryCountAsync(string messageId, int tryCount, TimeSpan? ttl = null)
         {
-            _memoryCache.Set(messageId, tryCount);
+            if (ttl.HasValue)
+            {
+                var options = new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = ttl.Value
+                };
+                _memoryCache.Set(messageId, tryCount, options);
+            }
+            else
+            {
+                _memoryCache.Set(messageId, tryCount);
+            }
             return Task.CompletedTask;
         }
 

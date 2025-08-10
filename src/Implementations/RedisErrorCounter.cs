@@ -20,9 +20,16 @@ namespace EasyMQ.Implementations
             return count.IsNull ? 0 : (int)count;
         }
 
-        public async Task UpdateTryCountAsync(string messageId, int tryCount)
+        public async Task UpdateTryCountAsync(string messageId, int tryCount, TimeSpan? ttl = null)
         {
-            await _redisDb.StringSetAsync(messageId, tryCount);
+            if (ttl.HasValue)
+            {
+                await _redisDb.StringSetAsync(messageId, tryCount, ttl.Value);
+            }
+            else
+            {
+                await _redisDb.StringSetAsync(messageId, tryCount);
+            }
         }   
 
         public async Task KillCounterAsync(string messageId)

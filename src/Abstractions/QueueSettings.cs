@@ -5,7 +5,7 @@ namespace EasyMQ.Abstractions;
 
 public class QueueSettings
 {
-    internal IList<(string Name, int prefetchCount, int retryCount, Type Type)> Queues { get; } = new List<(string, int, int, Type)>();
+    internal IList<(string Name, int prefetchCount, int retryCount, TimeSpan ttl, Type Type)> Queues { get; } = new List<(string, int, int, TimeSpan, Type)>();
 
     /// <summary>
     /// Create a queue
@@ -14,10 +14,11 @@ public class QueueSettings
     /// <param name="queueName">Queue name</param>
     /// <param name="prefetchCount">Number of messages that app will fetch from rabbit</param>
     /// <param name="retryCount">Number of retry to process message in case of any errors</param>
-    public void Add<T>(string queueName = null, int prefetchCount = 1, int retryCount = 1) where T : class
+    /// <param name="ttl">Time To Live for retry count data in Redis (default: 1 hour)</param>
+    public void Add<T>(string queueName = null, int prefetchCount = 1, int retryCount = 10, TimeSpan? ttl = null) where T : class
     {
         var type = typeof(T);
-        Queues.Add((queueName ?? type.FullName, prefetchCount, retryCount, type));
-
+        var defaultTtl = ttl ?? TimeSpan.FromHours(24);
+        Queues.Add((queueName ?? type.FullName, prefetchCount, retryCount, defaultTtl, type));
     }
 }

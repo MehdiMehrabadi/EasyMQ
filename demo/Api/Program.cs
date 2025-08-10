@@ -20,10 +20,10 @@ builder.Services.AddRabbitMq(settings =>
   
 }, queues =>
 {
-    queues.Add<MessageModel>(queueName: "message");
- // queues.Add<MessageModel2>(queueName: "message2");
+    queues.Add<MessageModel>(queueName: "message", ttl: TimeSpan.FromHours(1));
+ // queues.Add<MessageModel2>(queueName: "message2", ttl: TimeSpan.FromMinutes(30));
 
-});
+}, defaultTtl: TimeSpan.FromHours(1)); // Default TTL for all queues if not specified
 
 var app = builder.Build();
 

@@ -45,10 +45,10 @@ void ConfigureServices(HostBuilderContext hostingContext, IServiceCollection ser
 
         }, queues =>
         {
-            // add queues 
-            queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 3);
-            // queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3, retryCount: 2);
-        })
+            // add queues with TTL for retry count persistence
+            queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 3, ttl: TimeSpan.FromHours(2));
+            // queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3, retryCount: 2, ttl: TimeSpan.FromMinutes(30));
+        }, defaultTtl: TimeSpan.FromHours(1)) // Default TTL for all queues if not specified
         // add receivers
         .AddReceiver<MessageModel, MessageReceiver>();
     //.AddReceiver<MessageModel2, MessageReceiver2>();

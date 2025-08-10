@@ -11,7 +11,7 @@ namespace EasyMQ
 {
     public static class ServiceCollectionExtension
     {
-        public static IMessageBuilder AddRabbitMq(this IServiceCollection services, Action<MessageManagerSettings> messageManagerConfiguration, Action<QueueSettings> queuesConfiguration)
+        public static IMessageBuilder AddRabbitMq(this IServiceCollection services, Action<MessageManagerSettings> messageManagerConfiguration, Action<QueueSettings> queuesConfiguration, TimeSpan? defaultTtl = null)
         {
             services.AddSingleton<MessagePublisher>();
             services.AddSingleton<IMessagePublisher>(provider => provider.GetService<MessagePublisher>());
@@ -23,6 +23,12 @@ namespace EasyMQ
             var queueSettings = new QueueSettings();
             queuesConfiguration.Invoke(queueSettings);
             services.AddSingleton(queueSettings);
+
+            // Add default TTL configuration if provided
+            if (defaultTtl.HasValue)
+            {
+                services.AddSingleton(new DefaultTtlConfiguration { DefaultTtl = defaultTtl.Value });
+            }
 
             return new MessageBuilder(services);
         }
@@ -62,5 +68,11 @@ namespace EasyMQ
             }
         }
 
+    }
+
+    // Configuration class for default TTL
+    public class DefaultTtlConfiguration
+    {
+        public TimeSpan DefaultTtl { get; set; }
     }
 }

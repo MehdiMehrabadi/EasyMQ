@@ -18,7 +18,7 @@ internal class Listener<T> : BackgroundService where T : class
     private readonly string _queueName;
     private readonly int _prefetchCount;
     private readonly int _retryCount;
-
+    private readonly TimeSpan _ttl;
 
     public Listener(MessagePublisher messagePublisher, MessageManagerSettings messageManagerSettings,
         QueueSettings settings, IServiceScopeFactory serviceScopeFactory)
@@ -30,6 +30,7 @@ internal class Listener<T> : BackgroundService where T : class
         _queueName = queue.Name;
         _prefetchCount = queue.prefetchCount;
         _retryCount = queue.retryCount;
+        _ttl = queue.ttl;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -61,7 +62,7 @@ internal class Listener<T> : BackgroundService where T : class
                     if (tryCount < _retryCount)
                     {
                         tryCount++;
-                        await errorCounter.UpdateTryCountAsync(message.BasicProperties.MessageId, tryCount);
+                        await errorCounter.UpdateTryCountAsync(message.BasicProperties.MessageId, tryCount, _ttl);
                         _messagePublisher.NackMessage(message);
                     }
                     else
