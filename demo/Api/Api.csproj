@@ -1,15 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   
 	<ItemGroup>
-		<PackageReference Include="EasyMQ" Version="1.0.4" />
-		<PackageReference Include="Mapster" Version="7.3.0" />
+		<PackageReference Include="Mapster" Version="7.4.0" />
+		<PackageReference Include="EasyMQ" Version="1.0.6" />
 	</ItemGroup>
 
   

@@ -29,7 +29,6 @@ var host = Host.CreateDefaultBuilder(args)
 
 void ConfigureServices(HostBuilderContext hostingContext, IServiceCollection services)
 {
-
     var configuration = hostingContext.Configuration;
 
     services.AddRabbitMq(settings =>
@@ -42,23 +41,15 @@ void ConfigureServices(HostBuilderContext hostingContext, IServiceCollection ser
             settings.VirtualHost = config["VirtualHost"];
             settings.UserName = config["Username"];
             settings.Password = config["Password"];
-
         }, queues =>
         {
             // add queues 
-            queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 3);
+            queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 5);
             // queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3, retryCount: 2);
         })
         // add receivers
         .AddReceiver<MessageModel, MessageReceiver>();
     //.AddReceiver<MessageModel2, MessageReceiver2>();
-    services.AddCacheService(configuration);
-
-
-    #region cache configuration
-
-
-    #endregion
 }
 
 

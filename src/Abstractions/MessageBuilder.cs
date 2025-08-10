@@ -2,12 +2,7 @@
 
 namespace EasyMQ.Abstractions;
 
-internal class MessageBuilder : IMessageBuilder
+internal class MessageBuilder(IServiceCollection services) : IMessageBuilder
 {
-    public IServiceCollection Services { get; }
-
-    public MessageBuilder(IServiceCollection services)
-    {
-        Services = services;
-    }
+    public IServiceCollection Services { get; } = services;
 }

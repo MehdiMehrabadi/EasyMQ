@@ -1,9 +1,7 @@
-@baseUrl=http://localhost:5189
-
-###
-POST {{baseUrl}}/message
+POST http://localhost:5000/message
 Content-Type: application/json
+
 {
-    "Text":"this is a test message",
-    "Receiver":"001-358-545"
+  "Text":"this is a test message",
+  "Receiver":"111-222-555"
 }

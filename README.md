@@ -5,14 +5,13 @@
 ## EasyMQ
 This project is based on RabbitMQ and helps developers who want to avoid getting involved in the complexities of working with RabbitMQ. While working with this project and its expansion is easy, you utilize a maximum of RabbitMQ options in this project.
 
-|TargetFramework|Support|
-|---|---|
-|**net9.0**|:white_check_mark:|
-|**net8.0**|:white_check_mark:|
-|**net7.0**|:white_check_mark:|
-|**net6.0**|:white_check_mark:|
-|**net5.0**|:white_check_mark:|
-|**netcoreapp3.1**|:white_check_mark:|
+| Target Framework | Support |
+|------------------|---------|
+| **net9.0**       | ✅      |
+| **net8.0**       | ✅      |
+| **net7.0**       | ✅      |
+| **net6.0**       | ✅      |
+
 
 
 ## How to add in DI
@@ -53,20 +52,17 @@ And you can  add this to Consumer Startup like this:
         }, queues =>
         {
             // add queues 
-            queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 3);
-            // queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3, retryCount: -1);
+            queues.Add<MessageModel>(queueName: "message", prefetchCount: 10, retryCount: 5);
+            // queues.Add<MessageModel2>(queueName: "message2", prefetchCount: 3);
         })
         // add receivers
         .AddReceiver<MessageModel, MessageReceiver>();
        //.AddReceiver<MessageModel2, MessageReceiver2>();
 	
-	// for set retry count message to redis or in memory 
-    services.AddCacheService(configuration);
 ```
 As evident, you can specify the prefetch count for each queue, and set even define the retry count in case of an error. The mechanism of this project is that in case of an error in any part of the message, it adds it to the error queue of the same queue and returns it to the main queue after 10 seconds, and this count is configurable by yourself.
 Even if you have an issue with the 10-second interval, you can change this time.
-However, please note that if you change the time, you need to delete the queue from RabbitMQ and run the program again to recreate the queue. 
-If you want count of errors to be retried infinitely, you can use the number -1.
+However, please note that if you change the time, you need to delete the queue from RabbitMQ and run the program again to recreate the queue.
 You can use the following code to publish the message in the queue:
 
 ## Publisher
@@ -127,15 +123,7 @@ Rabbit option in appsettings.json
 ```
 
 
-### And Custom configuration for consumer
-CacheOption in appsettings.json
-```csharp
-  "CacheOption": {
-    "UseRedis": false, //if set false , default save messageId to in memory
-    "RedisConnectionString": "localhost:6379",
-    "RedisPassword": ""
-  }
-```
+
 In this project, an attempt has been made to make working with RabbitMQ more convenient. Now, if you have any suggestions, you are welcome to contribute in the project.
 
 

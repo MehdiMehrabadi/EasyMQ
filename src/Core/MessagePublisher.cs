@@ -17,7 +17,8 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
     private const string MaxPriorityHeader = "x-max-priority";
     private const string DeadLetterExchange = "x-dead-letter-exchange";
     private const string MessageTtl = "x-message-ttl";
-    internal IConnection Connection { get; private set; }
+    private readonly string _errorExchange;
+    private IConnection Connection { get; set; }
     internal IModel Channel { get; private set; }
     private readonly MessageManagerSettings _messageManagerSettings;
     private readonly QueueSettings _queueSettings;
@@ -25,7 +26,7 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
     {
 
         var exchangeError = $"{messageManagerSettings.ExchangeName}_error";
-
+        _errorExchange = exchangeError;
         var factory = new ConnectionFactory
         {
             HostName = messageManagerSettings.Host,
@@ -71,6 +72,7 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
 
         this._messageManagerSettings = messageManagerSettings;
         this._queueSettings = queueSettings;
+        
     }
 
     public Task PublishAsync<T>(T message, int priority = 1, TimeSpan? keepAliveTime = null, CancellationToken cancellationToken = default) where T : class
@@ -84,10 +86,33 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
         properties.Priority = Convert.ToByte(priority);
         properties.Expiration = keepAliveTime?.TotalMilliseconds.ToString(CultureInfo.InvariantCulture);
         properties.MessageId = Guid.NewGuid().ToString("N");
-
+        properties.Headers = new Dictionary<string, object>
+        {
+            ["retry-count"] = 1
+        };
         cancellationToken.ThrowIfCancellationRequested();
         Channel.BasicPublish(_messageManagerSettings.ExchangeName, routingKey, properties, sendBytes.AsMemory());
         return Task.CompletedTask;
+    }
+    public void RepublishToErrorExchange(
+        ReadOnlyMemory<byte> body,
+        string routingKey,
+        IBasicProperties originalProperties,
+        int nextRetryCount)
+    {
+        using var channel = Connection.CreateModel();
+
+        var properties = channel.CreateBasicProperties();
+        properties.Persistent = true;
+        properties.Priority = originalProperties.Priority;
+        properties.Expiration = originalProperties.Expiration;
+        properties.MessageId = originalProperties.MessageId;
+
+        properties.Headers = new Dictionary<string, object>(originalProperties.Headers ?? new Dictionary<string, object>())
+        {
+            ["retry-count"] = nextRetryCount
+        };
+        channel.BasicPublish($"{_messageManagerSettings.ExchangeName}_error", routingKey, properties, body);
     }
 
     public void AckMessage(BasicDeliverEventArgs message) => Channel.BasicAck(message.DeliveryTag, false);
@@ -110,6 +135,7 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
         }
         catch
         {
+            // ignored
         }
 
         GC.SuppressFinalize(this);

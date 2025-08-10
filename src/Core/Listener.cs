@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+
 namespace EasyMQ.Core;
 
 internal class Listener<T> : BackgroundService where T : class
@@ -17,15 +19,18 @@ internal class Listener<T> : BackgroundService where T : class
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly string _queueName;
     private readonly int _prefetchCount;
-    private readonly int _retryCount;
+    private readonly uint _retryCount;
 
-
-    public Listener(MessagePublisher messagePublisher, MessageManagerSettings messageManagerSettings,
-        QueueSettings settings, IServiceScopeFactory serviceScopeFactory)
+    public Listener(
+        MessagePublisher messagePublisher,
+        MessageManagerSettings messageManagerSettings,
+        QueueSettings settings,
+        IServiceScopeFactory serviceScopeFactory)
     {
-        this._messagePublisher = messagePublisher;
-        this._messageManagerSettings = messageManagerSettings;
-        this._serviceScopeFactory = serviceScopeFactory;
+        _messagePublisher = messagePublisher;
+        _messageManagerSettings = messageManagerSettings;
+        _serviceScopeFactory = serviceScopeFactory;
+
         var queue = settings.Queues.First(q => q.Type == typeof(T));
         _queueName = queue.Name;
         _prefetchCount = queue.prefetchCount;
@@ -36,13 +41,18 @@ internal class Listener<T> : BackgroundService where T : class
     {
         stoppingToken.ThrowIfCancellationRequested();
         _messagePublisher.Channel.BasicQos(0, (ushort)_prefetchCount, false);
+
         var consumer = new EventingBasicConsumer(_messagePublisher.Channel);
         consumer.Received += async (_, message) =>
         {
             using var scope = _serviceScopeFactory.CreateScope();
             var receiver = scope.ServiceProvider.GetRequiredService<IReceiver<T>>();
-            var errorCounter = scope.ServiceProvider.GetRequiredService<IErrorCounter>();
-            var response = JsonSerializer.Deserialize<T>(message.Body.Span, _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default);
+
+            var response = JsonSerializer.Deserialize<T>(   
+                message.Body.Span,
+                _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default
+            );
+
             try
             {
                 await receiver.ReceiveAsync(response, stoppingToken);
@@ -50,35 +60,31 @@ internal class Listener<T> : BackgroundService where T : class
             }
             catch (Exception)
             {
-                if (_retryCount == -1)
+                var retryCount = GetRetryCountFromHeaders(message.BasicProperties.Headers);
+                if (retryCount < _retryCount)
                 {
-                    // unlimited retry!
-                    _messagePublisher.NackMessage(message);
+                    _messagePublisher.RepublishToErrorExchange(
+                        body: message.Body,
+                        routingKey: _queueName,
+                        originalProperties: message.BasicProperties,
+                        nextRetryCount: retryCount + 1
+                    );
+                    _messagePublisher.AckMessage(message);
                 }
                 else
                 {
-                    var tryCount = await errorCounter.GetTryCountAsync(message.BasicProperties.MessageId);
-                    if (tryCount < _retryCount)
+                    try
                     {
-                        tryCount++;
-                        await errorCounter.UpdateTryCountAsync(message.BasicProperties.MessageId, tryCount);
-                        _messagePublisher.NackMessage(message);
+                        await receiver.HandleErrorAsync(response, stoppingToken);
+                        _messagePublisher.AckMessage(message);
                     }
-                    else
+                    catch (Exception)
                     {
-                        try
-                        {
-                            await receiver.HandleErrorAsync(response, stoppingToken);
-                            await errorCounter.KillCounterAsync(message.BasicProperties.MessageId);
-                            _messagePublisher.AckMessage(message);
-                        }
-                        catch (Exception)
-                        {
-                            _messagePublisher.NackMessage(message);
-                        }
+                        _messagePublisher.NackMessage(message);
                     }
                 }
             }
+
             stoppingToken.ThrowIfCancellationRequested();
         };
 
@@ -86,11 +92,32 @@ internal class Listener<T> : BackgroundService where T : class
         return Task.CompletedTask;
     }
 
+    private int GetRetryCountFromHeaders(IDictionary<string, object> headers)
+    {
+        if (headers == null || !headers.TryGetValue("retry-count", out var value)) return 0;
+        try
+        {
+            switch (value)
+            {
+                case byte[] bytes:
+                    return int.Parse(System.Text.Encoding.UTF8.GetString(bytes));
+                case int i:
+                    return i;
+                case long l:
+                    return (int)l;
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+        return 0;
+    }
+
     public override void Dispose()
     {
         _messagePublisher.Dispose();
         base.Dispose();
-
         GC.SuppressFinalize(this);
     }
 }

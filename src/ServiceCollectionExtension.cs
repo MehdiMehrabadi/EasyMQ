@@ -1,7 +1,6 @@
 ﻿using System;
 using EasyMQ.Abstractions;
 using EasyMQ.Core;
-using EasyMQ.Implementations;
 using EasyMQ.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,34 +32,7 @@ namespace EasyMQ
             builder.Services.AddScoped<IReceiver<TObject>, TReceiver>();
             return builder;
         }
-
-        public static void AddCacheService(this IServiceCollection services, IConfiguration configuration)
-        {
-            services.Configure<CacheOptions>(configuration.GetSection("CacheOption"));
-            var options = new CacheOptions();
-            configuration.GetSection("CacheOption").Bind(options);
-            if (options.UseRedis)
-            {
-                services.AddScoped<IErrorCounter, RedisErrorCounter>();
-
-
-                var redisOptions = ConfigurationOptions.Parse(options.RedisConnectionString);
-                redisOptions.Password = options.RedisPassword;
-
-                services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions));
-
-                services.AddScoped<IDatabase>(provider =>
-                {
-                    var connection = provider.GetRequiredService<IConnectionMultiplexer>();
-                    return connection.GetDatabase();
-                });
-            }
-            else
-            {
-                services.AddMemoryCache();
-                services.AddScoped<IErrorCounter, InMemoryErrorCounter>();
-            }
-        }
+        
 
     }
 }
