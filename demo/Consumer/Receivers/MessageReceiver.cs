@@ -27,6 +27,7 @@ public class MessageReceiver : IReceiver<MessageModel>
     /// this method is running after finishing retry count.
     /// </summary>
     /// <param name="message"></param>
+    /// <param name="cancellationToken"></param>
     /// <returns></returns>
     public async Task HandleErrorAsync(MessageModel message,CancellationToken cancellationToken)
     {

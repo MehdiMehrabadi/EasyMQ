@@ -17,16 +17,14 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
     private const string MaxPriorityHeader = "x-max-priority";
     private const string DeadLetterExchange = "x-dead-letter-exchange";
     private const string MessageTtl = "x-message-ttl";
-    private readonly string _errorExchange;
     private IConnection Connection { get; set; }
     internal IModel Channel { get; private set; }
     private readonly MessageManagerSettings _messageManagerSettings;
     private readonly QueueSettings _queueSettings;
+
     public MessagePublisher(MessageManagerSettings messageManagerSettings, QueueSettings queueSettings)
     {
-
         var exchangeError = $"{messageManagerSettings.ExchangeName}_error";
-        _errorExchange = exchangeError;
         var factory = new ConnectionFactory
         {
             HostName = messageManagerSettings.Host,
@@ -67,20 +65,19 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
             };
             Channel.QueueDeclare(queueError, durable: true, exclusive: false, autoDelete: false, arguments: errorArgs);
             Channel.QueueBind(queueError, exchangeError, queue.Name, errorArgs);
-
         }
 
-        this._messageManagerSettings = messageManagerSettings;
-        this._queueSettings = queueSettings;
-        
+        _messageManagerSettings = messageManagerSettings;
+        _queueSettings = queueSettings;
     }
 
-    public Task PublishAsync<T>(T message, int priority = 1, TimeSpan? keepAliveTime = null, CancellationToken cancellationToken = default) where T : class
+    public Task PublishAsync<T>(T message, int priority = 1, TimeSpan? keepAliveTime = null,
+        CancellationToken cancellationToken = default) where T : class
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var sendBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize<object>(message, _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default));
+        var sendBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize<T>(message,
+            _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default));
         var routingKey = _queueSettings.Queues.First(q => q.Type == typeof(T)).Name;
-
         var properties = Channel.CreateBasicProperties();
         properties.Persistent = true;
         properties.Priority = Convert.ToByte(priority);
@@ -94,6 +91,7 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
         Channel.BasicPublish(_messageManagerSettings.ExchangeName, routingKey, properties, sendBytes.AsMemory());
         return Task.CompletedTask;
     }
+
     public void RepublishToErrorExchange(
         ReadOnlyMemory<byte> body,
         string routingKey,
@@ -101,17 +99,17 @@ internal class MessagePublisher : IMessagePublisher, IDisposable
         int nextRetryCount)
     {
         using var channel = Connection.CreateModel();
-
         var properties = channel.CreateBasicProperties();
         properties.Persistent = true;
         properties.Priority = originalProperties.Priority;
         properties.Expiration = originalProperties.Expiration;
         properties.MessageId = originalProperties.MessageId;
 
-        properties.Headers = new Dictionary<string, object>(originalProperties.Headers ?? new Dictionary<string, object>())
-        {
-            ["retry-count"] = nextRetryCount
-        };
+        properties.Headers =
+            new Dictionary<string, object>(originalProperties.Headers ?? new Dictionary<string, object>())
+            {
+                ["retry-count"] = nextRetryCount
+            };
         channel.BasicPublish($"{_messageManagerSettings.ExchangeName}_error", routingKey, properties, body);
     }
 

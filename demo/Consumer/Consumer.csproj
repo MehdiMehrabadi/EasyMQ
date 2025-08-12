@@ -8,10 +8,10 @@
   </PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
-		<PackageReference Include="EasyMQ" Version="1.0.6" />
-
+	
 	</ItemGroup>
 	<ItemGroup>
+	  <ProjectReference Include="..\..\src\EasyMQ.csproj" />
 	  <ProjectReference Include="..\Common\Common.csproj" />
 	</ItemGroup>
 

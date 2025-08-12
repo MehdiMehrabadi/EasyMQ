@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EasyMQ.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -20,16 +22,18 @@ internal class Listener<T> : BackgroundService where T : class
     private readonly string _queueName;
     private readonly int _prefetchCount;
     private readonly uint _retryCount;
+    private readonly ILogger<Listener<T>> _logger;
 
     public Listener(
         MessagePublisher messagePublisher,
         MessageManagerSettings messageManagerSettings,
         QueueSettings settings,
-        IServiceScopeFactory serviceScopeFactory)
+        IServiceScopeFactory serviceScopeFactory, ILogger<Listener<T>> logger)
     {
         _messagePublisher = messagePublisher;
         _messageManagerSettings = messageManagerSettings;
         _serviceScopeFactory = serviceScopeFactory;
+        _logger = logger;
 
         var queue = settings.Queues.First(q => q.Type == typeof(T));
         _queueName = queue.Name;
@@ -40,6 +44,7 @@ internal class Listener<T> : BackgroundService where T : class
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         stoppingToken.ThrowIfCancellationRequested();
+
         _messagePublisher.Channel.BasicQos(0, (ushort)_prefetchCount, false);
 
         var consumer = new EventingBasicConsumer(_messagePublisher.Channel);
@@ -48,19 +53,32 @@ internal class Listener<T> : BackgroundService where T : class
             using var scope = _serviceScopeFactory.CreateScope();
             var receiver = scope.ServiceProvider.GetRequiredService<IReceiver<T>>();
 
-            var response = JsonSerializer.Deserialize<T>(   
-                message.Body.Span,
-                _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default
-            );
+            T? response = null;
 
             try
             {
-                await receiver.ReceiveAsync(response, stoppingToken);
+                response = JsonSerializer.Deserialize<T>(
+                    message.Body.Span,
+                    _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Deserialization error");
+                _messagePublisher.AckMessage(message);
+                return;
+            }
+
+            try
+            {
+                await receiver.ReceiveAsync(response!, stoppingToken);
                 _messagePublisher.AckMessage(message);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Exception in ReceiveAsync");
                 var retryCount = GetRetryCountFromHeaders(message.BasicProperties.Headers);
+
                 if (retryCount < _retryCount)
                 {
                     _messagePublisher.RepublishToErrorExchange(
@@ -75,11 +93,12 @@ internal class Listener<T> : BackgroundService where T : class
                 {
                     try
                     {
-                        await receiver.HandleErrorAsync(response, stoppingToken);
+                        await receiver.HandleErrorAsync(response!, stoppingToken);
                         _messagePublisher.AckMessage(message);
                     }
-                    catch (Exception)
+                    catch (Exception exception)
                     {
+                        _logger.LogError(exception, "Exception in HandleErrorAsync");
                         _messagePublisher.NackMessage(message);
                     }
                 }
@@ -97,21 +116,18 @@ internal class Listener<T> : BackgroundService where T : class
         if (headers == null || !headers.TryGetValue("retry-count", out var value)) return 0;
         try
         {
-            switch (value)
+            return value switch
             {
-                case byte[] bytes:
-                    return int.Parse(System.Text.Encoding.UTF8.GetString(bytes));
-                case int i:
-                    return i;
-                case long l:
-                    return (int)l;
-            }
+                byte[] bytes => int.Parse(Encoding.UTF8.GetString(bytes)),
+                int i => i,
+                long l => (int)l,
+                _ => 0
+            };
         }
         catch
         {
-            // ignored
+            return 0;
         }
-        return 0;
     }
 
     public override void Dispose()
@@ -121,3 +137,4 @@ internal class Listener<T> : BackgroundService where T : class
         GC.SuppressFinalize(this);
     }
 }
+

@@ -20,7 +20,7 @@ namespace Api.Controllers
         [HttpPost]
         public async Task<IActionResult> SendMessageAsync([FromBody] MessageRequest request)
         {
-            await _messagePublisher.PublishAsync(request.Adapt<MessageModel>(), priority: 1, keepAliveTime: TimeSpan.FromSeconds(30));
+            await _messagePublisher.PublishAsync(request.Adapt<MessageModel>(), priority: 1, keepAliveTime: TimeSpan.FromSeconds(120));
 
             return Ok();
         }
