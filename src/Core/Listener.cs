@@ -1,4 +1,5 @@
-﻿using System;
+﻿#nullable enable
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -28,7 +29,8 @@ internal class Listener<T> : BackgroundService where T : class
         MessagePublisher messagePublisher,
         MessageManagerSettings messageManagerSettings,
         QueueSettings settings,
-        IServiceScopeFactory serviceScopeFactory, ILogger<Listener<T>> logger)
+        IServiceScopeFactory serviceScopeFactory,
+        ILogger<Listener<T>> logger)
     {
         _messagePublisher = messagePublisher;
         _messageManagerSettings = messageManagerSettings;
@@ -45,87 +47,120 @@ internal class Listener<T> : BackgroundService where T : class
     {
         stoppingToken.ThrowIfCancellationRequested();
 
-        _messagePublisher.Channel.BasicQos(0, (ushort)_prefetchCount, false);
+        _messagePublisher.Channel.BasicQos(0, (ushort) _prefetchCount, false);
 
         var consumer = new EventingBasicConsumer(_messagePublisher.Channel);
+
         consumer.Received += async (_, message) =>
         {
-            using var scope = _serviceScopeFactory.CreateScope();
-            var receiver = scope.ServiceProvider.GetRequiredService<IReceiver<T>>();
-
-            T? response = null;
-
             try
             {
-                response = JsonSerializer.Deserialize<T>(
-                    message.Body.Span,
-                    _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default
-                );
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Deserialization error");
-                _messagePublisher.AckMessage(message);
-                return;
-            }
+                using var scope = _serviceScopeFactory.CreateScope();
+                var receiver = scope.ServiceProvider.GetRequiredService<IReceiver<T>>();
 
-            try
-            {
-                await receiver.ReceiveAsync(response!, stoppingToken);
-                _messagePublisher.AckMessage(message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Exception in ReceiveAsync");
-                var retryCount = GetRetryCountFromHeaders(message.BasicProperties.Headers);
-
-                if (retryCount < _retryCount)
+                T? response;
+                try
                 {
-                    _messagePublisher.RepublishToErrorExchange(
-                        body: message.Body,
-                        routingKey: _queueName,
-                        originalProperties: message.BasicProperties,
-                        nextRetryCount: retryCount + 1
-                    );
+                    response = JsonSerializer.Deserialize<T>(
+                        message.Body.Span,
+                        _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default);
+
+                    if (response == null)
+                    {
+                        _logger.LogError($"Deserialization returned null for message on queue {_queueName}");
+                        _messagePublisher.AckMessage(message);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Deserialization failed for message on queue {QueueName}", _queueName);
+                    _messagePublisher.AckMessage(message);
+                    return;
+                }
+
+                try
+                {
+                    await receiver.ReceiveAsync(response, stoppingToken);
                     _messagePublisher.AckMessage(message);
                 }
-                else
+                catch (Exception ex)
                 {
-                    try
+                    _logger.LogError(ex, $"Exception in ReceiveAsync for message on queue {_queueName}");
+
+                    var retryCount = GetRetryCountFromHeaders(message.BasicProperties.Headers);
+
+                    if (retryCount < _retryCount)
                     {
-                        await receiver.HandleErrorAsync(response!, stoppingToken);
-                        _messagePublisher.AckMessage(message);
+                        try
+                        {
+                            _messagePublisher.RepublishToErrorExchange(
+                                body: message.Body,
+                                routingKey: _queueName,
+                                originalProperties: message.BasicProperties,
+                                nextRetryCount: retryCount + 1);
+
+                            _messagePublisher.AckMessage(message);
+                        }
+                        catch (Exception republishEx)
+                        {
+                            _logger.LogError(republishEx,
+                                $"Failed to republish message to error exchange for queue {_queueName}");
+                            _messagePublisher.AckMessage(message);
+                        }
                     }
-                    catch (Exception exception)
+                    else
                     {
-                        _logger.LogError(exception, "Exception in HandleErrorAsync");
-                        _messagePublisher.NackMessage(message);
+                        try
+                        {
+                            await receiver.HandleErrorAsync(response, stoppingToken);
+                            _messagePublisher.AckMessage(message);
+                        }
+                        catch (Exception handleErrorEx)
+                        {
+                            _logger.LogError(handleErrorEx, $"Exception in HandleErrorAsync for queue {_queueName}");
+                            _messagePublisher.NackMessage(message);
+                        }
                     }
                 }
-            }
 
-            stoppingToken.ThrowIfCancellationRequested();
+                stoppingToken.ThrowIfCancellationRequested();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogCritical(ex, $"Unhandled exception in message handler for queue {_queueName}");
+                try
+                {
+                    _messagePublisher.NackMessage(message);
+                }
+                catch (Exception ackEx)
+                {
+                    _logger.LogError(ackEx, "Failed to Nack message after unhandled exception.");
+                }
+            }
         };
 
         _messagePublisher.Channel.BasicConsume(_queueName, autoAck: false, consumer);
         return Task.CompletedTask;
     }
 
-    private int GetRetryCountFromHeaders(IDictionary<string, object> headers)
+    private int GetRetryCountFromHeaders(IDictionary<string, object>? headers)
     {
         if (headers == null || !headers.TryGetValue("retry-count", out var value)) return 0;
+
         try
         {
             return value switch
             {
                 byte[] bytes => int.Parse(Encoding.UTF8.GetString(bytes)),
                 int i => i,
-                long l => (int)l,
+                long l => (int) l,
                 _ => 0
             };
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "Failed to parse retry-count header.");
             return 0;
         }
     }
@@ -137,4 +172,3 @@ internal class Listener<T> : BackgroundService where T : class
         GC.SuppressFinalize(this);
     }
 }
-

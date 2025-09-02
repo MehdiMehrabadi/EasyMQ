@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using EasyMQ.Abstractions;
 using EasyMQ.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace EasyMQ
 {
@@ -30,7 +31,6 @@ namespace EasyMQ
                 WriteIndented = false,
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
             };
-
             return new MessageBuilder(services);
         }
 
@@ -38,7 +38,8 @@ namespace EasyMQ
             where TObject : class
             where TReceiver : class, IReceiver<TObject>
         {
-            builder.Services.AddHostedService<Listener<TObject>>();
+            builder.Services.AddHostedService<Listener<TObject>>()
+                .Configure<HostOptions>(opts => opts.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
             builder.Services.AddScoped<IReceiver<TObject>, TReceiver>();
             return builder;
         }
