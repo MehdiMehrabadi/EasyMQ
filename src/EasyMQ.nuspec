@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<package >
+    <metadata>
+        <id>EasyMQ</id>
+        <version>$version$</version>
+        <authors>Mehdi Mehrabadi</authors>
+        <license type="expression">MIT</license>
+        <projectUrl>https://github.com/MehdiMehrabadi/EasyMQ</projectUrl>
+        <repository type="git" url="https://github.com/MehdiMehrabadi/EasyMQ" />
+        <description>A package for easier use of RabbitMQ with professional queue management</description>
+        <tags>aspnetcore easymq rabbitmq queue</tags>
+
+        <dependencies>
+
+            <group targetFramework="net8.0">
+                <dependency id="Microsoft.Extensions.Configuration.Abstractions" version="8.0.0" />
+                <dependency id="Microsoft.Extensions.Options.ConfigurationExtensions" version="8.0.0" />
+                <dependency id="Microsoft.Extensions.Hosting" version="8.0.0" />
+                <dependency id="RabbitMQ.Client" version="6.7.0" />
+            </group>
+
+            <group targetFramework="net9.0">
+                <dependency id="Microsoft.Extensions.Configuration.Abstractions" version="9.0.0" />
+                <dependency id="Microsoft.Extensions.Options.ConfigurationExtensions" version="9.0.0" />
+                <dependency id="Microsoft.Extensions.Hosting" version="9.0.0" />
+                <dependency id="RabbitMQ.Client" version="7.0.0" />
+            </group>
+
+            <group targetFramework="net10.0">
+                <dependency id="Microsoft.Extensions.Configuration.Abstractions" version="10.0.0" />
+                <dependency id="Microsoft.Extensions.Options.ConfigurationExtensions" version="10.0.0" />
+                <dependency id="Microsoft.Extensions.Hosting" version="10.0.0" />
+                <dependency id="RabbitMQ.Client" version="7.0.2" />
+            </group>
+
+        </dependencies>
+
+    </metadata>
+
+    <files>
+
+        <file src="bin\Release\net8.0\EasyMQ.dll" target="lib\net8.0\" />
+        <file src="bin\Release\net8.0\EasyMQ.xml" target="lib\net8.0\" />
+
+        <file src="bin\Release\net9.0\EasyMQ.dll" target="lib\net9.0\" />
+        <file src="bin\Release\net9.0\EasyMQ.xml" target="lib\net9.0\" />
+
+        <file src="bin\Release\net10.0\EasyMQ.dll" target="lib\net10.0\" />
+        <file src="bin\Release\net10.0\EasyMQ.xml" target="lib\net10.0\" />
+    </files>
+
+</package>
