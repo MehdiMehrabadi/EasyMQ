@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
-builder.Services.AddRabbitMq(settings =>
+builder.Services.AddEasyMq(settings =>
 {
     var configuration = builder.Configuration.GetSection("Rabbit");
     int.TryParse(configuration["Port"], out var port);

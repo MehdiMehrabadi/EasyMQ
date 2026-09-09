@@ -5,7 +5,7 @@
 
         <AssemblyName>EasyMQ</AssemblyName>
         <RootNamespace>EasyMQ</RootNamespace>
-        <Version>1.0.9</Version>
+        <Version>1.2.0</Version>
         <Authors>Mehdi Mehrabadi</Authors>
         <PackageId>EasyMQ</PackageId>
         <PackageTags>aspnetcore;easymq;rabbitmq;queue</PackageTags>
@@ -31,6 +31,6 @@
         <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0"/>
         <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0"/>
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0"/>
-        <PackageReference Include="RabbitMQ.Client" Version="7.0.2"/>
+        <PackageReference Include="RabbitMQ.Client" Version="7.2.2"/>
     </ItemGroup>
 </Project>

@@ -7,13 +7,12 @@ namespace EasyMQ.Abstractions;
 public interface IMessagePublisher
 {
     /// <summary>
-    /// Publish a message to a queue based on message type
+    /// Publishes a message to the queue registered for <typeparamref name="T"/>.
     /// </summary>
     /// <typeparam name="T">Type of message</typeparam>
     /// <param name="message">Message object</param>
-    /// <param name="priority">Message priority in the queue, higher priority will process sooner</param>
-    /// <param name="keepAliveTime">Message expiration in the queue (after that message will be deleted if not processed)</param>
-    /// <param name="cancellationToken">Publish message will be cancelled if CancellationToken fired</param>
-    /// <returns></returns>
+    /// <param name="priority">Priority (0-10). Higher values are processed sooner.</param>
+    /// <param name="keepAliveTime">Optional per-message TTL; expired messages are dropped if not consumed.</param>
+    /// <param name="cancellationToken">Cancels the publish operation</param>
     Task PublishAsync<T>(T message, int priority = 1, TimeSpan? keepAliveTime = null, CancellationToken cancellationToken = default) where T : class;
 }

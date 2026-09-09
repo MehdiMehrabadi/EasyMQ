@@ -29,7 +29,7 @@ void ConfigureServices(HostBuilderContext hostingContext, IServiceCollection ser
 {
     var configuration = hostingContext.Configuration;
 
-    services.AddRabbitMq(settings =>
+    services.AddEasyMq(settings =>
         {
             var config = configuration.GetSection("Rabbit");
             int.TryParse(config["Port"], out var port);

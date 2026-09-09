@@ -6,42 +6,78 @@ using EasyMQ.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace EasyMQ
+namespace EasyMQ;
+
+public static class ServiceCollectionExtension
 {
-    public static class ServiceCollectionExtension
+    /// <summary>
+    /// Registers EasyMQ publisher, connection, and queue topology configuration.
+    /// </summary>
+    public static IMessageBuilder AddEasyMq(
+        this IServiceCollection services,
+        Action<MessageManagerSettings> messageManagerConfiguration,
+        Action<QueueSettings> queuesConfiguration)
     {
-        public static IMessageBuilder AddRabbitMq(
-            this IServiceCollection services,
-            Action<MessageManagerSettings> messageManagerConfiguration,
-            Action<QueueSettings> queuesConfiguration)
-        {
-            services.AddSingleton<MessagePublisher>();
-            services.AddSingleton<IMessagePublisher>(provider => provider.GetRequiredService<MessagePublisher>());
-            var messageManagerSettings = new MessageManagerSettings();
-            messageManagerConfiguration.Invoke(messageManagerSettings);
-            services.AddSingleton(messageManagerSettings);
-            var queueSettings = new QueueSettings();
-            queuesConfiguration.Invoke(queueSettings);
-            services.AddSingleton(queueSettings);
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(messageManagerConfiguration);
+        ArgumentNullException.ThrowIfNull(queuesConfiguration);
 
-            messageManagerSettings.JsonSerializerOptions ??= new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = false,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
-            return new MessageBuilder(services);
+        var messageManagerSettings = new MessageManagerSettings();
+        messageManagerConfiguration(messageManagerSettings);
+
+        messageManagerSettings.JsonSerializerOptions ??= new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
+        if (string.IsNullOrWhiteSpace(messageManagerSettings.ExchangeName))
+        {
+            throw new InvalidOperationException("ExchangeName is required. Set settings.ExchangeName in AddEasyMq.");
         }
 
-        public static IMessageBuilder AddReceiver<TObject, TReceiver>(this IMessageBuilder builder)
-            where TObject : class
-            where TReceiver : class, IReceiver<TObject>
+        if (string.IsNullOrWhiteSpace(messageManagerSettings.Host))
         {
-            builder.Services.AddHostedService<Listener<TObject>>()
-                .Configure<HostOptions>(opts => opts.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
-            builder.Services.AddScoped<IReceiver<TObject>, TReceiver>();
-            return builder;
+            throw new InvalidOperationException("Host is required. Set settings.Host in AddEasyMq.");
         }
+
+        var queueSettings = new QueueSettings();
+        queuesConfiguration(queueSettings);
+
+        services.AddSingleton(messageManagerSettings);
+        services.AddSingleton(queueSettings);
+        services.AddSingleton<MessagePublisher>();
+        services.AddSingleton<IMessagePublisher>(provider => provider.GetRequiredService<MessagePublisher>());
+
+        services.Configure<HostOptions>(opts =>
+            opts.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+
+        return new MessageBuilder(services);
+    }
+
+    /// <summary>
+    /// Registers EasyMQ publisher, connection, and queue topology configuration.
+    /// </summary>
+    [Obsolete("Use AddEasyMq instead.")]
+    public static IMessageBuilder AddRabbitMq(
+        this IServiceCollection services,
+        Action<MessageManagerSettings> messageManagerConfiguration,
+        Action<QueueSettings> queuesConfiguration)
+        => AddEasyMq(services, messageManagerConfiguration, queuesConfiguration);
+
+    /// <summary>
+    /// Registers a background consumer for <typeparamref name="TObject"/> using <typeparamref name="TReceiver"/>.
+    /// </summary>
+    public static IMessageBuilder AddReceiver<TObject, TReceiver>(this IMessageBuilder builder)
+        where TObject : class
+        where TReceiver : class, IReceiver<TObject>
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.Services.AddHostedService<Listener<TObject>>();
+        builder.Services.AddScoped<IReceiver<TObject>, TReceiver>();
+        return builder;
     }
 }

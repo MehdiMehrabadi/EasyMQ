@@ -1,141 +1,356 @@
-﻿using System;
+﻿#nullable enable
+using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EasyMQ.Abstractions;
 using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
 
 namespace EasyMQ.Core;
 
-internal class MessagePublisher : IMessagePublisher, IDisposable
+internal sealed class MessagePublisher : IMessagePublisher, IAsyncDisposable, IDisposable
 {
     private const string MaxPriorityHeader = "x-max-priority";
     private const string DeadLetterExchange = "x-dead-letter-exchange";
     private const string MessageTtl = "x-message-ttl";
-    private IConnection Connection { get; set; }
-    internal IModel Channel { get; private set; }
-    private readonly MessageManagerSettings _messageManagerSettings;
+
+    private readonly MessageManagerSettings _settings;
     private readonly QueueSettings _queueSettings;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private readonly SemaphoreSlim _republishLock = new(1, 1);
 
-    public MessagePublisher(MessageManagerSettings messageManagerSettings, QueueSettings queueSettings)
+    private IConnection? _connection;
+    private IChannel? _publishChannel;
+    private IChannel? _republishChannel;
+    private bool _initialized;
+    private bool _disposed;
+
+    public MessagePublisher(MessageManagerSettings settings, QueueSettings queueSettings)
     {
-        var exchangeError = $"{messageManagerSettings.ExchangeName}_error";
-        var factory = new ConnectionFactory
-        {
-            HostName = messageManagerSettings.Host,
-            Port = messageManagerSettings.Port,
-            UserName = messageManagerSettings.UserName,
-            Password = messageManagerSettings.Password,
-            VirtualHost = messageManagerSettings.VirtualHost
-        };
-        Connection = factory.CreateConnection();
-
-        Channel = Connection.CreateModel();
-
-
-        Channel.ExchangeDeclare(messageManagerSettings.ExchangeName,
-            type: ExchangeType.Direct, true);
-
-        Channel.ExchangeDeclare(exchangeError,
-            type: ExchangeType.Direct, true);
-
-
-        foreach (var queue in queueSettings.Queues)
-        {
-            var queueError = $"{queue.Name}_error";
-            var args = new Dictionary<string, object>
-            {
-                [MaxPriorityHeader] = 10,
-                [DeadLetterExchange] = exchangeError,
-            };
-            Channel.QueueDeclare(queue.Name, durable: true, exclusive: false, autoDelete: false, args);
-            Channel.QueueBind(queue.Name, messageManagerSettings.ExchangeName, queue.Name);
-
-
-            var errorArgs = new Dictionary<string, object>
-            {
-                [MaxPriorityHeader] = 10,
-                [DeadLetterExchange] = messageManagerSettings.ExchangeName,
-                [MessageTtl] = 10000,
-            };
-            Channel.QueueDeclare(queueError, durable: true, exclusive: false, autoDelete: false, arguments: errorArgs);
-            Channel.QueueBind(queueError, exchangeError, queue.Name, errorArgs);
-        }
-
-        _messageManagerSettings = messageManagerSettings;
+        _settings = settings;
         _queueSettings = queueSettings;
     }
 
-    public Task PublishAsync<T>(T message, int priority = 1, TimeSpan? keepAliveTime = null,
-        CancellationToken cancellationToken = default) where T : class
+    internal async Task EnsureInitializedAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var sendBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize<T>(message,
-            _messageManagerSettings.JsonSerializerOptions ?? JsonOptions.Default));
-        var routingKey = _queueSettings.Queues.First(q => q.Type == typeof(T)).Name;
-        var properties = Channel.CreateBasicProperties();
-        properties.Persistent = true;
-        properties.Priority = Convert.ToByte(priority);
-        properties.Expiration = keepAliveTime?.TotalMilliseconds.ToString(CultureInfo.InvariantCulture);
-        properties.MessageId = Guid.NewGuid().ToString("N");
-        properties.Headers = new Dictionary<string, object>
+        if (_initialized && IsUsable(_publishChannel) && IsUsable(_republishChannel) && _connection is { IsOpen: true })
         {
-            ["retry-count"] = 1
-        };
-        cancellationToken.ThrowIfCancellationRequested();
-        Channel.BasicPublish(_messageManagerSettings.ExchangeName, routingKey, properties, sendBytes.AsMemory());
-        return Task.CompletedTask;
-    }
+            return;
+        }
 
-    public void RepublishToErrorExchange(
-        ReadOnlyMemory<byte> body,
-        string routingKey,
-        IBasicProperties originalProperties,
-        int nextRetryCount)
-    {
-        using var channel = Connection.CreateModel();
-        var properties = channel.CreateBasicProperties();
-        properties.Persistent = true;
-        properties.Priority = originalProperties.Priority;
-        properties.Expiration = originalProperties.Expiration;
-        properties.MessageId = originalProperties.MessageId;
-
-        properties.Headers =
-            new Dictionary<string, object>(originalProperties.Headers ?? new Dictionary<string, object>())
-            {
-                ["retry-count"] = nextRetryCount
-            };
-        channel.BasicPublish($"{_messageManagerSettings.ExchangeName}_error", routingKey, properties, body);
-    }
-
-    public void AckMessage(BasicDeliverEventArgs message) => Channel.BasicAck(message.DeliveryTag, false);
-
-    public void NackMessage(BasicDeliverEventArgs message) => Channel.BasicNack(message.DeliveryTag, false, false);
-
-    public void Dispose()
-    {
+        await _initLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Channel.IsOpen)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (_initialized && IsUsable(_publishChannel) && IsUsable(_republishChannel) && _connection is { IsOpen: true })
             {
-                Channel.Close();
+                return;
             }
 
-            if (Connection.IsOpen)
+            await DisposeChannelsAsync().ConfigureAwait(false);
+
+            if (_connection is null || !_connection.IsOpen)
             {
-                Connection.Close();
+                if (_connection is not null)
+                {
+                    await _connection.DisposeAsync().ConfigureAwait(false);
+                }
+
+                var factory = new ConnectionFactory
+                {
+                    HostName = _settings.Host,
+                    Port = _settings.Port,
+                    UserName = _settings.UserName,
+                    Password = _settings.Password,
+                    VirtualHost = _settings.VirtualHost,
+                    AutomaticRecoveryEnabled = true,
+                    TopologyRecoveryEnabled = true
+                };
+
+                _connection = await factory.CreateConnectionAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            _publishChannel = await CreateChannelAsync(publisherConfirms: _settings.EnablePublisherConfirms, cancellationToken)
+                .ConfigureAwait(false);
+            _republishChannel = await CreateChannelAsync(publisherConfirms: false, cancellationToken)
+                .ConfigureAwait(false);
+
+            await DeclareTopologyAsync(cancellationToken).ConfigureAwait(false);
+            _initialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+
+    internal async Task<IChannel> CreateConsumerChannelAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        // Consumers do not need publisher confirms; keep the channel dedicated and lightweight.
+        return await CreateChannelAsync(publisherConfirms: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task PublishAsync<T>(
+        T message,
+        int priority = 1,
+        TimeSpan? keepAliveTime = null,
+        CancellationToken cancellationToken = default) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+
+        var registration = _queueSettings.GetRequired<T>();
+        var body = JsonSerializer.SerializeToUtf8Bytes(
+            message,
+            _settings.JsonSerializerOptions ?? JsonOptions.Default);
+
+        var properties = new BasicProperties
+        {
+            Persistent = true,
+            Priority = Convert.ToByte(Math.Clamp(priority, 0, 10)),
+            Expiration = keepAliveTime?.TotalMilliseconds.ToString(CultureInfo.InvariantCulture),
+            MessageId = Guid.NewGuid().ToString("N"),
+            Headers = new Dictionary<string, object?>
+            {
+                ["retry-count"] = 0
+            }
+        };
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await _publishChannel!.BasicPublishAsync(
+                _settings.ExchangeName,
+                registration.Name,
+                mandatory: false,
+                basicProperties: properties,
+                body: body,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task RepublishToErrorExchangeAsync(
+        ReadOnlyMemory<byte> body,
+        string routingKey,
+        IReadOnlyBasicProperties originalProperties,
+        int nextRetryCount,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+
+        var headers = CopyHeaders(originalProperties.Headers);
+        headers["retry-count"] = nextRetryCount;
+
+        var properties = new BasicProperties
+        {
+            Persistent = true,
+            Priority = originalProperties.Priority,
+            Expiration = originalProperties.Expiration,
+            MessageId = originalProperties.MessageId,
+            Headers = headers
+        };
+
+        // One shared republish channel, serialized — avoids open/close per failure.
+        await _republishLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!IsUsable(_republishChannel))
+            {
+                _republishChannel = await CreateChannelAsync(publisherConfirms: false, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            await _republishChannel!.BasicPublishAsync(
+                    $"{_settings.ExchangeName}_error",
+                    routingKey,
+                    mandatory: false,
+                    basicProperties: properties,
+                    body: body,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _republishLock.Release();
+        }
+    }
+
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        try
+        {
+            await DisposeChannelsAsync().ConfigureAwait(false);
+
+            if (_connection is not null)
+            {
+                if (_connection.IsOpen)
+                {
+                    await _connection.CloseAsync().ConfigureAwait(false);
+                }
+
+                await _connection.DisposeAsync().ConfigureAwait(false);
             }
         }
         catch
         {
-            // ignored
+            // ignored on shutdown
         }
 
+        _initLock.Dispose();
+        _republishLock.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    private async Task DeclareTopologyAsync(CancellationToken cancellationToken)
+    {
+        var channel = _publishChannel ?? throw new InvalidOperationException("Publish channel is not initialized.");
+        var exchangeError = $"{_settings.ExchangeName}_error";
+        var errorTtl = Math.Max(0, _settings.ErrorQueueMessageTtlMilliseconds);
+
+        await channel.ExchangeDeclareAsync(
+                _settings.ExchangeName,
+                ExchangeType.Direct,
+                durable: true,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        await channel.ExchangeDeclareAsync(
+                exchangeError,
+                ExchangeType.Direct,
+                durable: true,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var queue in _queueSettings.Queues.Values)
+        {
+            var queueError = $"{queue.Name}_error";
+            var args = new Dictionary<string, object?>
+            {
+                [MaxPriorityHeader] = 10,
+                [DeadLetterExchange] = exchangeError,
+            };
+
+            await channel.QueueDeclareAsync(
+                    queue.Name,
+                    durable: true,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: args,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            await channel.QueueBindAsync(
+                    queue.Name,
+                    _settings.ExchangeName,
+                    queue.Name,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            var errorArgs = new Dictionary<string, object?>
+            {
+                [MaxPriorityHeader] = 10,
+                [DeadLetterExchange] = _settings.ExchangeName,
+                [MessageTtl] = errorTtl,
+            };
+
+            await channel.QueueDeclareAsync(
+                    queueError,
+                    durable: true,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: errorArgs,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            await channel.QueueBindAsync(
+                    queueError,
+                    exchangeError,
+                    queue.Name,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private Task<IChannel> CreateChannelAsync(bool publisherConfirms, CancellationToken cancellationToken)
+    {
+        var options = new CreateChannelOptions(
+            publisherConfirmationsEnabled: publisherConfirms,
+            publisherConfirmationTrackingEnabled: publisherConfirms);
+
+        return _connection!.CreateChannelAsync(options, cancellationToken);
+    }
+
+    private async Task DisposeChannelsAsync()
+    {
+        _initialized = false;
+
+        if (_publishChannel is not null)
+        {
+            try
+            {
+                if (_publishChannel.IsOpen)
+                {
+                    await _publishChannel.CloseAsync().ConfigureAwait(false);
+                }
+
+                await _publishChannel.DisposeAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignored
+            }
+
+            _publishChannel = null;
+        }
+
+        if (_republishChannel is not null)
+        {
+            try
+            {
+                if (_republishChannel.IsOpen)
+                {
+                    await _republishChannel.CloseAsync().ConfigureAwait(false);
+                }
+
+                await _republishChannel.DisposeAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignored
+            }
+
+            _republishChannel = null;
+        }
+    }
+
+    private static bool IsUsable(IChannel? channel) => channel is { IsOpen: true };
+
+    private static Dictionary<string, object?> CopyHeaders(IDictionary<string, object?>? headers)
+    {
+        var copy = new Dictionary<string, object?>();
+        if (headers is null)
+        {
+            return copy;
+        }
+
+        foreach (var pair in headers)
+        {
+            copy[pair.Key] = pair.Value;
+        }
+
+        return copy;
     }
 }
