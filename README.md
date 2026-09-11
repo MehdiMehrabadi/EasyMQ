@@ -11,8 +11,9 @@ This project is based on RabbitMQ and helps developers who want to avoid getting
 | **net9.0**       | ✅      |
 | **net8.0**       | ✅      |
 
-## What's new (v1.2.0)
+## What's new (v1.2.1)
 
+- **Per-TFM Microsoft.Extensions dependencies** — `net8.0` / `net9.0` / `net10.0` each depend on matching Extensions versions (no forced upgrade to 10.x on older TFMs)
 - **`AddEasyMq`** — preferred DI entry point (replaces `AddRabbitMq`; old name still works but is obsolete)
 - **`EnablePublisherConfirms`** — waits for RabbitMQ broker confirmation on publish (default: `true`)
 - **`ErrorQueueMessageTtlMilliseconds`** — configures how long failed messages stay in the error queue before retry (default: `10000`)

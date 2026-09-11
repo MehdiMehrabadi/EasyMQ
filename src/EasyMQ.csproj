@@ -5,7 +5,7 @@
 
         <AssemblyName>EasyMQ</AssemblyName>
         <RootNamespace>EasyMQ</RootNamespace>
-        <Version>1.2.0</Version>
+        <Version>1.2.1</Version>
         <Authors>Mehdi Mehrabadi</Authors>
         <PackageId>EasyMQ</PackageId>
         <PackageTags>aspnetcore;easymq;rabbitmq;queue</PackageTags>
@@ -15,22 +15,44 @@
         <RepositoryUrl>https://github.com/MehdiMehrabadi/EasyMQ</RepositoryUrl>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
         <Description>A package for easier use of RabbitMQ with professional queue management</Description>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
 
-
-        <LangVersion>preview</LangVersion>
+        <LangVersion>latest</LangVersion>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <NoWarn>$(NoWarn);1591</NoWarn>
 
-
-        <NuspecFile>EasyMQ.nuspec</NuspecFile>
-        <NuspecProperties>version=$(Version)</NuspecProperties>
+        <!-- Each TFM ships its own Microsoft.Extensions dependency versions. -->
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     </PropertyGroup>
 
     <ItemGroup>
+        <None Include="..\README.md" Pack="true" PackagePath="\"/>
+    </ItemGroup>
+
+    <!-- net8 consumers must not be forced onto Extensions 10 -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1"/>
+    </ItemGroup>
+
+    <!-- net9 consumers must not be forced onto Extensions 10 -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
         <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0"/>
         <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0"/>
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="RabbitMQ.Client" Version="7.2.2"/>
     </ItemGroup>
 </Project>
